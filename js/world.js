@@ -1,7 +1,7 @@
 export const TILE=40, W=92,H=65;
 const rnd=(x,y,z=0)=>{let n=Math.sin(x*127.1+y*311.7+z*83.13)*43758.5453;return n-Math.floor(n)};
 const grid=Array.from({length:H},(_,y)=>Array.from({length:W},(_,x)=>'grass'));
-const roads=[[7,7],[19,7],[19,18],[34,18],[34,9],[52,9],[52,25],[70,25],[70,12],[84,12],[84,40],[63,40],[63,53],[42,53],[42,39],[24,39],[24,54],[9,54],[9,34],[7,7]]];
+const roads=[[7,7],[19,7],[19,18],[34,18],[34,9],[52,9],[52,25],[70,25],[70,12],[84,12],[84,40],[63,40],[63,53],[42,53],[42,39],[24,39],[24,54],[9,54],[9,34],[7,7]];
 function carve(x,y,r=2,t='path'){for(let yy=Math.max(0,y-r);yy<=Math.min(H-1,y+r);yy++)for(let xx=Math.max(0,x-r);xx<=Math.min(W-1,x+r);xx++)if(Math.hypot(xx-x,yy-y)<=r+.2)grid[yy][xx]=t}
 for(let i=1;i<roads.length;i++){let [x1,y1]=roads[i-1],[x2,y2]=roads[i];let len=Math.hypot(x2-x1,y2-y1);for(let s=0;s<=len*2;s++){let t=s/(len*2);carve(Math.round(x1+(x2-x1)*t),Math.round(y1+(y2-y1)*t),2)}}
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){
