@@ -1,10 +1,11 @@
 
-import { verbs, ruleNames } from '../data/verbs.js';
+import { verbs } from '../data/verbs.js';
 import { speak } from './audio.js';
 
-const shuffle = a => [...a].sort(() => Math.random() - .5);
+const shuffle = a => [...a].sort(() => Math.random() - 0.5);
 
-const clean = s => s.toLowerCase()
+const clean = s => String(s)
+    .toLowerCase()
     .trim()
     .replace(/[.!?]/g, '')
     .replace(/\s+/g, ' ');
@@ -14,34 +15,45 @@ const cleanBase = s => clean(s)
     .trim();
 
 function choices(correct, others) {
+    const unique = [...new Set(
+        others.filter(x => x !== correct)
+    )];
+
     return shuffle([
         correct,
-        ...shuffle(others.filter(x => x !== correct)).slice(0, 3)
+        ...shuffle(unique).slice(0, 3)
     ]);
 }
 
 export function challengeFor(v, type) {
     const others = verbs.filter(x => x.id !== v.id);
 
-    let question, answers, correct;
+    let question = '';
+    let answers = [];
+    let correct = '';
     let mode = 'choice';
     let say = null;
 
     if (type === 'chest') {
         question = `Hva betyr «${v.word}»?`;
         correct = v.no;
-        answers = choices(correct, others.map(x => x.no));
+        answers = choices(
+            correct,
+            others.map(x => x.no)
+        );
     }
 
     if (type === 'crystal') {
         question = `She ___ . (${v.word})`;
         correct = v.third;
+
         answers = choices(correct, [
             v.word,
             v.word + 's',
             v.word + 'es',
             v.word.slice(0, -1) + 'ies',
-            v.third + 's'
+            v.third + 's',
+            ...others.map(x => x.third)
         ]);
     }
 
@@ -52,32 +64,43 @@ export function challengeFor(v, type) {
     }
 
     if (type === 'bell') {
-        question = '🔊 Lytt til ordet. Hva betyr det?';
+        question = 'Lytt til ordet. Hva betyr det?';
         correct = v.no;
-        answers = choices(correct, others.map(x => x.no));
+        answers = choices(
+            correct,
+            others.map(x => x.no)
+        );
         say = v.word;
     }
 
     if (type === 'portal') {
-        const good = Math.random() > .5;
-        let subject = 'She';
-        let verb = good
-            ? v.third
-            : v.word === v.third
+        const good = Math.random() > 0.5;
+
+        let sentence = good
+            ? `She ${v.third} every day.`
+            : `She ${v.word === v.third
                 ? v.word + 's'
-                : v.word;
+                : v.word} every day.`;
 
-        let sent = `${subject} ${verb} every day.`;
-
-        if (v.rule === 5) {
-            sent = `She ${good ? v.word : v.word + 's'} go home.`;
+        if (['can', 'will', 'must', 'should', 'could', 'might'].includes(v.word)) {
+            sentence = `She ${
+                good ? v.word : v.word + 's'
+            } go home.`;
         }
 
         if (v.word === 'be') {
-            sent = `She ${good ? 'is' : 'be'} happy.`;
+            sentence = `She ${
+                good ? 'is' : 'be'
+            } happy today.`;
         }
 
-        question = `Er setningen riktig?\n${sent}`;
+        if (v.word === 'have') {
+            sentence = `She ${
+                good ? 'has' : 'have'
+            } a new book.`;
+        }
+
+        question = sentence;
         correct = good ? 'Riktig' : 'Feil';
         answers = ['Riktig', 'Feil'];
     }
@@ -102,28 +125,58 @@ export function runChallenge(
     const task = challengeFor(v, type);
     let answered = false;
 
+    const titles = {
+        chest: '🎁 Finn ordet',
+        crystal: '💎 Grammatikk',
+        rune: '🪨 Staveprøve',
+        bell: '🔔 Lytteprøve',
+        portal: '🌀 Feildetektiven'
+    };
+
     function render() {
+        const questionHtml = type === 'portal'
+            ? `
+                <div style="
+                    text-align:center;
+                    margin:12px 0 8px;
+                    font-size:15px;
+                    font-weight:500;
+                    color:#64748b;
+                ">
+                    Er setningen riktig?
+                </div>
+
+                <div class="question" style="
+                    font-size:22px;
+                    font-weight:700;
+                    line-height:1.45;
+                    text-align:center;
+                    padding:24px 16px;
+                    margin-bottom:16px;
+                ">
+                    ${task.question}
+                </div>
+              `
+            : `
+                <div class="question">
+                    ${task.question}
+                </div>
+              `;
+
         openModal(`
-            <h2>${{
-                chest: '🎁 Finn ordet',
-                crystal: '💎 Grammatikk',
-                rune: '🪨 Staveprøve',
-                bell: '🔔 Lytteprøve',
-                portal: '🌀 Feildetektiven'
-            }[type]}</h2>
+            <h2>${titles[type]}</h2>
 
-            <p class="muted">
-                ${type === 'rune'
-                    ? 'Skriv grunnformen (med eller uten «to»).'
-                    : 'Velg ett svar. Ingen tidspress.'}
-            </p>
-
-            <div class="question">
-                ${task.question.replace(/\n/g, '<br>')}
-            </div>
+            ${questionHtml}
 
             ${task.say
-                ? '<button id="listen" class="secondary">🔊 Spill av igjen</button>'
+                ? `
+                    <button
+                        id="listen"
+                        class="secondary"
+                    >
+                        🔊 Spill av igjen
+                    </button>
+                  `
                 : ''}
 
             ${task.mode === 'write'
@@ -136,8 +189,12 @@ export function runChallenge(
                         autocapitalize="off"
                         spellcheck="false"
                     >
+
                     <p>
-                        <button id="submitText" class="primary">
+                        <button
+                            id="submitText"
+                            class="primary"
+                        >
                             Sjekk svar
                         </button>
                     </p>
@@ -148,12 +205,17 @@ export function runChallenge(
                             <button
                                 class="choice"
                                 data-choice="${i}"
-                            >${a}</button>
+                            >
+                                ${a}
+                            </button>
                         `).join('')}
                     </div>
                   `}
 
-            <div class="feedback" id="feedback"></div>
+            <div
+                class="feedback"
+                id="feedback"
+            ></div>
 
             <div class="rowBtns">
                 <button
@@ -174,7 +236,8 @@ export function runChallenge(
         }
 
         if (task.mode === 'write') {
-            const input = document.getElementById('answerText');
+            const input =
+                document.getElementById('answerText');
 
             document.getElementById('submitText').onclick =
                 () => judge(input.value);
@@ -188,9 +251,13 @@ export function runChallenge(
             input.focus();
         } else {
             document.querySelectorAll('[data-choice]')
-                .forEach(b => {
-                    b.onclick = () =>
-                        judge(task.answers[+b.dataset.choice], b);
+                .forEach(button => {
+                    button.onclick = () => {
+                        const index =
+                            Number(button.dataset.choice);
+
+                        judge(task.answers[index], button);
+                    };
                 });
         }
     }
@@ -198,36 +265,58 @@ export function runChallenge(
     function judge(value, button) {
         if (answered) return;
 
-        // Skriveoppgaver: godta grunnform med eller uten "to".
         const ok = task.mode === 'write'
             ? cleanBase(value) === cleanBase(task.correct)
             : clean(value) === clean(task.correct);
 
         answered = true;
 
-        document.querySelectorAll('.choice').forEach(b => {
-            b.disabled = true;
+        document.querySelectorAll('.choice')
+            .forEach(b => {
+                b.disabled = true;
 
-            if (clean(b.textContent) === clean(task.correct)) {
-                b.classList.add('good');
-            } else if (b === button) {
-                b.classList.add('bad');
-            }
-        });
+                if (
+                    clean(b.textContent) ===
+                    clean(task.correct)
+                ) {
+                    b.classList.add('good');
+                } else if (b === button) {
+                    b.classList.add('bad');
+                }
+            });
 
-        const input = document.getElementById('answerText');
-        if (input) input.disabled = true;
+        const input =
+            document.getElementById('answerText');
 
-        const submit = document.getElementById('submitText');
-        if (submit) submit.disabled = true;
+        if (input) {
+            input.disabled = true;
+        }
 
-        document.getElementById('feedback').innerHTML = ok
-            ? '🥳 Riktig! Ny kunnskap til ordboken.'
-            : `🙂 Godt forsøk. Riktig svar: <b>${task.correct}</b>`;
+        const submit =
+            document.getElementById('submitText');
 
-        const next = document.getElementById('nextChallenge');
+        if (submit) {
+            submit.disabled = true;
+        }
+
+        const feedback =
+            document.getElementById('feedback');
+
+        if (ok) {
+            feedback.innerHTML =
+                '🥳 Riktig! Bra jobbet!';
+            feedback.style.color = '#16835d';
+        } else {
+            feedback.textContent =
+                `🙂 Riktig svar: ${task.correct}`;
+            feedback.style.color = '#b45309';
+        }
+
+        const next =
+            document.getElementById('nextChallenge');
 
         next.style.display = '';
+
         next.textContent = ok
             ? 'Samle belønningen →'
             : 'Prøv senere →';
