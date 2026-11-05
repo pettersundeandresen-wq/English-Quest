@@ -1,11 +1,9 @@
 
 import { verbs } from '../data/verbs.js';
-
 import {
     objects, TILE, W, H,
     walkable, drawWorld, region
 } from './world.js';
-
 import { drawPlayer } from './player.js';
 import { load, save, clear } from './save.js';
 import { showBook } from './dictionary.js';
@@ -29,7 +27,7 @@ const canvas = $('game');
 const ctx = canvas.getContext('2d');
 const modal = $('modal');
 
-let player = {
+const player = {
     x: state.position.x,
     y: state.position.y
 };
@@ -53,7 +51,20 @@ let joystickX = 0;
 let joystickY = 0;
 let joystickPointer = null;
 
+function resetJoystick() {
+    joystickPointer = null;
+    joystickX = 0;
+    joystickY = 0;
+
+    if (joystickKnob) {
+        joystickKnob.style.transform =
+            'translate(-50%, -50%)';
+    }
+}
+
 function updateJoystick(e) {
+    if (!joystick || !joystickKnob) return;
+
     const rect = joystick.getBoundingClientRect();
 
     const centerX = rect.left + rect.width / 2;
@@ -84,46 +95,38 @@ function updateJoystick(e) {
         `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
 }
 
-function resetJoystick() {
-    joystickPointer = null;
-    joystickX = 0;
-    joystickY = 0;
+if (joystick) {
+    joystick.addEventListener('pointerdown', e => {
+        if (modalOpen || joystickPointer !== null) return;
 
-    joystickKnob.style.transform =
-        'translate(-50%, -50%)';
+        e.preventDefault();
+
+        joystickPointer = e.pointerId;
+        joystick.setPointerCapture(e.pointerId);
+
+        updateJoystick(e);
+    });
+
+    joystick.addEventListener('pointermove', e => {
+        if (e.pointerId !== joystickPointer) return;
+
+        e.preventDefault();
+        updateJoystick(e);
+    });
+
+    function endJoystick(e) {
+        if (e.pointerId !== joystickPointer) return;
+        resetJoystick();
+    }
+
+    joystick.addEventListener('pointerup', endJoystick);
+    joystick.addEventListener('pointercancel', endJoystick);
+    joystick.addEventListener('lostpointercapture', endJoystick);
+
+    joystick.addEventListener('contextmenu', e => {
+        e.preventDefault();
+    });
 }
-
-joystick.addEventListener('pointerdown', e => {
-    if (modalOpen || joystickPointer !== null) return;
-
-    e.preventDefault();
-
-    joystickPointer = e.pointerId;
-    joystick.setPointerCapture(e.pointerId);
-
-    updateJoystick(e);
-});
-
-joystick.addEventListener('pointermove', e => {
-    if (e.pointerId !== joystickPointer) return;
-
-    e.preventDefault();
-    updateJoystick(e);
-});
-
-function endJoystick(e) {
-    if (e.pointerId !== joystickPointer) return;
-
-    resetJoystick();
-}
-
-joystick.addEventListener('pointerup', endJoystick);
-joystick.addEventListener('pointercancel', endJoystick);
-joystick.addEventListener('lostpointercapture', endJoystick);
-
-joystick.addEventListener('contextmenu', e => {
-    e.preventDefault();
-});
 
 // --------------------------------------------------
 // MODALER
@@ -181,13 +184,12 @@ for (const obj of objects) {
 function getAreaStats(name) {
     const missions = areaObjects.get(name) || [];
 
-    const total = missions.length;
-
-    const completed = missions.filter(
-        obj => Boolean(state.done[obj.id])
-    ).length;
-
-    return { total, completed };
+    return {
+        total: missions.length,
+        completed: missions.filter(
+            obj => Boolean(state.done[obj.id])
+        ).length
+    };
 }
 
 function updateAreas() {
@@ -207,6 +209,7 @@ function updateAreas() {
         completedAll += stats.completed;
 
         const current = area.name === currentArea;
+
         const finished =
             stats.total > 0 &&
             stats.completed === stats.total;
@@ -234,25 +237,24 @@ function updateAreas() {
 }
 
 // --------------------------------------------------
-// SPILLINFORMASJON
+// HUD
 // --------------------------------------------------
 
 function updateHUD() {
-    const count = Object.keys(state.found)
-        .filter(id => state.found[id]).length;
-
-    const doneCount = objects.filter(
-        obj => state.done[obj.id]
+    const count = verbs.filter(
+        v => Boolean(state.found[v.id])
     ).length;
 
+    const doneCount = objects.filter(
+        obj => Boolean(state.done[obj.id])
+    ).length;
+
+    const stars = Object.values(state.mastery)
+        .reduce((sum, n) => sum + Number(n || 0), 0);
+
     $('coins').textContent = `🪙 ${state.coins}`;
-
-    $('found').textContent =
-        `📖 ${count}/${verbs.length}`;
-
-    $('stars').textContent =
-        `⭐ ${Object.values(state.mastery)
-            .reduce((s, n) => s + n, 0)}`;
+    $('found').textContent = `📖 ${count}/${verbs.length}`;
+    $('stars').textContent = `⭐ ${stars}`;
 
     $('location').textContent =
         region(player.x, player.y);
@@ -275,7 +277,7 @@ function updateHUD() {
         `${count} oppdaget · ${doneCount} utfordringer fullført`;
 
     $('questProgress').style.width =
-        (count / verbs.length * 100) + '%';
+        `${count / verbs.length * 100}%`;
 
     updateAreas();
 }
@@ -294,7 +296,7 @@ function persist() {
 }
 
 // --------------------------------------------------
-// UTFORDRINGER
+// UTFORDRINGER I SPILLVERDENEN
 // --------------------------------------------------
 
 function interact() {
@@ -350,11 +352,13 @@ function interact() {
 $('actionBtn').onclick = interact;
 
 // --------------------------------------------------
-// ORDBOK
+// ORDBOK MED BEVART NAVIGASJON
 // --------------------------------------------------
 
 $('bookBtn').onclick = () => {
-    showBook(
+    let book = null;
+
+    book = showBook(
         openModal,
         state,
         v => {
@@ -387,6 +391,15 @@ $('bookBtn').onclick = () => {
 
                         persist();
                         updateHUD();
+                    }
+
+                    // VIKTIG:
+                    // challenges.js har nå lukket modalen.
+                    // Åpne samme ordbokinstans igjen.
+                    // Dermed beholdes filter og valgt verb.
+
+                    if (book) {
+                        book.refresh();
                     }
                 }
             );
@@ -483,9 +496,6 @@ function loop(now) {
 
         if (dx || dy) {
             const magnitude = Math.hypot(dx, dy);
-
-            // Behold joystickens følsomhet.
-            // Tastaturet gir alltid full hastighet.
             const strength = Math.min(1, magnitude);
 
             dx = dx / magnitude * strength;
@@ -517,7 +527,6 @@ function loop(now) {
     }
 
     // Kamera følger avataren.
-
     const cam = {
         x: Math.max(
             0,
@@ -526,7 +535,6 @@ function loop(now) {
                 player.x * TILE - canvas.width / 2
             )
         ),
-
         y: Math.max(
             0,
             Math.min(
@@ -548,7 +556,6 @@ function loop(now) {
     );
 
     // Finn nærmeste utfordring.
-
     near = null;
 
     let best = 1.7;
@@ -586,20 +593,17 @@ function loop(now) {
     $('actionBtn').style.opacity =
         near && !modalOpen ? '1' : '.55';
 
-    // Marker området spilleren befinner seg i.
-
+    // Oppdater markering av område.
     const currentArea = region(player.x, player.y);
 
     if (currentArea !== lastArea) {
         lastArea = currentArea;
 
         $('location').textContent = currentArea;
-
         updateAreas();
     }
 
-    // Lagre posisjonen med jevne mellomrom.
-
+    // Lagre posisjonen regelmessig.
     if (now - lastSave > 3000) {
         lastSave = now;
         persist();
