@@ -1,3 +1,249 @@
-import {verbs} from '../data/verbs.js';import {speak} from './audio.js';
-export function showBook(openModal,state,practice){let filter='all',selected=null;function render(){const found=verbs.filter(v=>state.found[v.id]);const mastered=found.filter(v=>(state.mastery[v.id]||0)>=5);const list=verbs.filter(v=>filter==='all'||filter==='found'&&state.found[v.id]||filter==='practice'&&state.found[v.id]&&(state.mastery[v.id]||0)<5||filter==='mastered'&&(state.mastery[v.id]||0)>=5);openModal(`<h2>📖 Den magiske ordboken</h2><div class="bookStats">Oppdaget <b>${found.length}/88</b> · Mestret <b>${mastered.length}/88</b> · Stjerner <b>${found.reduce((s,v)=>s+(state.mastery[v.id]||0),0)}/440</b></div><div class="bookTabs"><button data-filter="all" class="${filter==='all'?'active':''}">Alle</button><button data-filter="found" class="${filter==='found'?'active':''}">Oppdaget</button><button data-filter="practice" class="${filter==='practice'?'active':''}">Må øves</button><button data-filter="mastered" class="${filter==='mastered'?'active':''}">Mestret</button></div><div class="bookGrid">${list.map(v=>`<button class="wordCard ${state.found[v.id]?'':'locked'}" data-word="${v.id}"><b>${state.found[v.id]?v.word:'🔒 ???'}</b><small>${state.found[v.id]?'★'.repeat(state.mastery[v.id]||0)+'☆'.repeat(5-(state.mastery[v.id]||0)):'Uoppdaget'}</small></button>`).join('')}</div><div id="detail"></div>`);document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;selected=null;render()});document.querySelectorAll('[data-word]').forEach(b=>b.onclick=()=>{const v=verbs[+b.dataset.word];if(!state.found[v.id])return;selected=v;detail()});if(selected)detail()}
-function detail(){const v=selected;if(!v)return;document.getElementById('detail').innerHTML=`<div class="wordDetail"><h3>to ${v.word} · ${v.no}</h3><p>He / she / it: <b>${v.third}</b> · ${'⭐'.repeat(state.mastery[v.id]||0)}${'☆'.repeat(5-(state.mastery[v.id]||0))}</p><p><b>${v.sentence}</b></p><div class="row"><button class="secondary" id="wordAudio">🔊 Ord</button><button class="secondary" id="sentenceAudio">🔊 Setning</button><button class="secondary" id="slowAudio">🐢 Sakte</button><button class="primary" id="wordPractice">Øv på ordet</button></div></div>`;document.getElementById('wordAudio').onclick=()=>speak(v.word);document.getElementById('sentenceAudio').onclick=()=>speak(v.sentence);document.getElementById('slowAudio').onclick=()=>speak(v.sentence,true);document.getElementById('wordPractice').onclick=()=>practice(v)}render()}
+
+import { verbs } from '../data/verbs.js';
+import { speak } from './audio.js';
+
+export function showBook(openModal, state, practice) {
+    let filter = 'all';
+    let selectedId = null;
+
+    const filters = [
+        ['all', 'Alle'],
+        ['found', 'Oppdaget'],
+        ['practice', 'Må øves'],
+        ['mastered', 'Mestret']
+    ];
+
+    const $ = id => document.getElementById(id);
+
+    function isFound(v) {
+        return Boolean(state.found[v.id]);
+    }
+
+    function stars(v) {
+        return Math.max(
+            0,
+            Math.min(5, state.mastery[v.id] || 0)
+        );
+    }
+
+    function matchesFilter(v) {
+        if (filter === 'all') return true;
+
+        if (filter === 'found') {
+            return isFound(v);
+        }
+
+        if (filter === 'practice') {
+            return isFound(v) && stars(v) < 5;
+        }
+
+        if (filter === 'mastered') {
+            return isFound(v) && stars(v) === 5;
+        }
+
+        return false;
+    }
+
+    function render() {
+        const found = verbs.filter(isFound);
+
+        const mastered = found.filter(
+            v => stars(v) === 5
+        );
+
+        const list = verbs.filter(matchesFilter);
+
+        const starCount = found.reduce(
+            (sum, v) => sum + stars(v),
+            0
+        );
+
+        // Dersom et verb ikke lenger passer filteret,
+        // behold filteret, men lukk verbdetaljene.
+        if (
+            selectedId !== null &&
+            !list.some(v => v.id === selectedId)
+        ) {
+            selectedId = null;
+        }
+
+        const tabs = filters.map(([id, label]) => `
+            <button
+                data-filter="${id}"
+                class="${filter === id ? 'active' : ''}"
+            >
+                ${label}
+            </button>
+        `).join('');
+
+        const cards = list.map(v => {
+            const foundWord = isFound(v);
+            const selected = selectedId === v.id;
+
+            return `
+                <button
+                    class="wordCard
+                        ${foundWord ? '' : 'locked'}
+                        ${selected ? 'selected' : ''}"
+                    data-word="${v.id}"
+                    style="${selected
+                        ? 'outline:2px solid #315bd9;'
+                        : ''}"
+                >
+                    <b>
+                        ${foundWord ? v.word : '🔒 ???'}
+                    </b>
+
+                    <small>
+                        ${foundWord
+                            ? '★'.repeat(stars(v)) +
+                              '☆'.repeat(5 - stars(v))
+                            : 'Uoppdaget'}
+                    </small>
+                </button>
+            `;
+        }).join('');
+
+        openModal(`
+            <h2>📖 Den magiske ordboken</h2>
+
+            <div class="bookStats">
+                Oppdaget <b>${found.length}/${verbs.length}</b>
+                · Mestret <b>${mastered.length}/${verbs.length}</b>
+                · Stjerner <b>${starCount}/${verbs.length * 5}</b>
+            </div>
+
+            <div class="bookTabs">
+                ${tabs}
+            </div>
+
+            <div class="bookGrid">
+                ${cards || `
+                    <p class="muted">
+                        Ingen verb i denne kategorien ennå.
+                    </p>
+                `}
+            </div>
+
+            <div id="detail"></div>
+        `);
+
+        // Filterknapper.
+        document.querySelectorAll('[data-filter]')
+            .forEach(button => {
+                button.onclick = () => {
+                    filter = button.dataset.filter;
+                    selectedId = null;
+                    render();
+                };
+            });
+
+        // Verbkort.
+        document.querySelectorAll('[data-word]')
+            .forEach(button => {
+                button.onclick = () => {
+                    const id = Number(button.dataset.word);
+
+                    const v = verbs.find(
+                        word => word.id === id
+                    );
+
+                    if (!v || !isFound(v)) return;
+
+                    selectedId = v.id;
+                    renderDetail();
+                };
+            });
+
+        if (selectedId !== null) {
+            renderDetail();
+        }
+    }
+
+    function renderDetail() {
+        const v = verbs.find(
+            word => word.id === selectedId
+        );
+
+        const container = $('detail');
+
+        if (!container || !v || !isFound(v)) return;
+
+        const level = stars(v);
+
+        container.innerHTML = `
+            <div class="wordDetail">
+                <h3>to ${v.word} · ${v.no}</h3>
+
+                <p>
+                    He / she / it:
+                    <b>${v.third}</b>
+                    · ${'⭐'.repeat(level)}
+                    ${'☆'.repeat(5 - level)}
+                </p>
+
+                <p>
+                    <b>${v.sentence || ''}</b>
+                </p>
+
+                <div class="row">
+                    <button
+                        class="secondary"
+                        id="wordAudio"
+                    >
+                        🔊 Ord
+                    </button>
+
+                    <button
+                        class="secondary"
+                        id="sentenceAudio"
+                    >
+                        🔊 Setning
+                    </button>
+
+                    <button
+                        class="secondary"
+                        id="slowAudio"
+                    >
+                        🐢 Sakte
+                    </button>
+
+                    <button
+                        class="primary"
+                        id="wordPractice"
+                    >
+                        Øv på ordet
+                    </button>
+                </div>
+            </div>
+        `;
+
+        $('wordAudio').onclick = () => speak(v.word);
+
+        $('sentenceAudio').onclick = () => {
+            speak(v.sentence || v.word);
+        };
+
+        $('slowAudio').onclick = () => {
+            speak(v.sentence || v.word, true);
+        };
+
+        $('wordPractice').onclick = () => {
+            practice(v);
+        };
+    }
+
+    function refresh() {
+        // Samme filter og valgt verb beholdes.
+        // Mestring og stjerner leses på nytt fra state.
+        render();
+    }
+
+    render();
+
+    return {
+        refresh,
+        getFilter: () => filter,
+        getSelectedId: () => selectedId
+    };
+}
