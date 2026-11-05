@@ -648,3 +648,58 @@ footer {
         font-size: 10px;
     }
 }
+/* JOYSTICK */
+
+.joystick {
+    position: relative;
+    display: block;
+    width: 116px;
+    height: 116px;
+    min-width: 116px;
+    min-height: 116px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 3px solid #89b6c7;
+    background: rgba(185, 220, 235, 0.22);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.joystick-ring {
+    position: absolute;
+    inset: 17%;
+    border: 1px dashed rgba(210, 235, 250, 0.5);
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.joystick-knob {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(145deg, #91b8e5, #4779ba);
+    border: 3px solid #d8e8ff;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.22);
+    pointer-events: none;
+}
+
+@media (max-width: 600px) {
+    .joystick {
+        width: 104px;
+        height: 104px;
+        min-width: 104px;
+        min-height: 104px;
+    }
+
+    .joystick-knob {
+        width: 46px;
+        height: 46px;
+    }
+}
