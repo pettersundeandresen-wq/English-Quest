@@ -170,9 +170,9 @@ function speakListening(word) {
         return utterance;
     }
 
-    const first = makeSpeech(sentence, 0.85);
+    const first = makeSpeech(sentence, 0.70);
 
-    const second = makeSpeech(word, 0.78);
+    const second = makeSpeech(word, 0.65);
 
     // Kort pause mellom setningen og verbet.
     first.onend = () => {
