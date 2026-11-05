@@ -1,9 +1,11 @@
 
 import { verbs } from '../data/verbs.js';
+
 import {
     objects, TILE, W, H,
     walkable, drawWorld, region
 } from './world.js';
+
 import { drawPlayer } from './player.js';
 import { load, save, clear } from './save.js';
 import { showBook } from './dictionary.js';
@@ -21,8 +23,11 @@ state.mastery ??= {};
 state.position ??= { x: 7, y: 7 };
 state.coins ??= 0;
 
-const canvas = document.getElementById('game');
+const $ = id => document.getElementById(id);
+
+const canvas = $('game');
 const ctx = canvas.getContext('2d');
+const modal = $('modal');
 
 let player = {
     x: state.position.x,
@@ -35,18 +40,99 @@ let modalOpen = false;
 let near = null;
 let prev = 0;
 let lastSave = 0;
+let lastArea = '';
 
 // --------------------------------------------------
-// HJELPEFUNKSJONER
+// JOYSTICK
 // --------------------------------------------------
 
-const $ = id => document.getElementById(id);
+const joystick = $('joystick');
+const joystickKnob = $('joystickKnob');
 
-const modal = $('modal');
+let joystickX = 0;
+let joystickY = 0;
+let joystickPointer = null;
+
+function updateJoystick(e) {
+    const rect = joystick.getBoundingClientRect();
+
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    const dx = e.clientX - centerX;
+    const dy = e.clientY - centerY;
+
+    const maxDistance = rect.width * 0.28;
+    const distance = Math.hypot(dx, dy);
+
+    const scale = distance > maxDistance
+        ? maxDistance / distance
+        : 1;
+
+    const x = dx * scale;
+    const y = dy * scale;
+
+    joystickX = x / maxDistance;
+    joystickY = y / maxDistance;
+
+    if (Math.hypot(joystickX, joystickY) < 0.15) {
+        joystickX = 0;
+        joystickY = 0;
+    }
+
+    joystickKnob.style.transform =
+        `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+}
+
+function resetJoystick() {
+    joystickPointer = null;
+    joystickX = 0;
+    joystickY = 0;
+
+    joystickKnob.style.transform =
+        'translate(-50%, -50%)';
+}
+
+joystick.addEventListener('pointerdown', e => {
+    if (modalOpen || joystickPointer !== null) return;
+
+    e.preventDefault();
+
+    joystickPointer = e.pointerId;
+    joystick.setPointerCapture(e.pointerId);
+
+    updateJoystick(e);
+});
+
+joystick.addEventListener('pointermove', e => {
+    if (e.pointerId !== joystickPointer) return;
+
+    e.preventDefault();
+    updateJoystick(e);
+});
+
+function endJoystick(e) {
+    if (e.pointerId !== joystickPointer) return;
+
+    resetJoystick();
+}
+
+joystick.addEventListener('pointerup', endJoystick);
+joystick.addEventListener('pointercancel', endJoystick);
+joystick.addEventListener('lostpointercapture', endJoystick);
+
+joystick.addEventListener('contextmenu', e => {
+    e.preventDefault();
+});
+
+// --------------------------------------------------
+// MODALER
+// --------------------------------------------------
 
 function openModal(html) {
     modalOpen = true;
     keys.clear();
+    resetJoystick();
 
     modal.classList.remove('hidden');
     $('modalContent').innerHTML = html;
@@ -65,36 +151,16 @@ modal.onclick = e => {
 };
 
 // --------------------------------------------------
-// OMRÅDER OG OPPDRAG
+// OMRÅDER
 // --------------------------------------------------
 
-// Navnene må samsvare med region() i world.js.
-
 const areas = [
-    {
-        name: 'Landsbyen',
-        icon: '🏡'
-    },
-    {
-        name: 'Den ville skogen',
-        icon: '🌲'
-    },
-    {
-        name: 'Elvedalen',
-        icon: '🌊'
-    },
-    {
-        name: 'Steinruinene',
-        icon: '🪨'
-    },
-    {
-        name: 'Den magiske lysningen',
-        icon: '✨'
-    }
+    { name: 'Landsbyen', icon: '🏡' },
+    { name: 'Den ville skogen', icon: '🌲' },
+    { name: 'Elvedalen', icon: '🌊' },
+    { name: 'Steinruinene', icon: '🪨' },
+    { name: 'Den magiske lysningen', icon: '✨' }
 ];
-
-// Finn område for hver utfordring.
-// Beregnes fra koordinatene i world.js.
 
 const areaObjects = new Map();
 
@@ -112,42 +178,20 @@ for (const obj of objects) {
     areaObjects.get(name).push(obj);
 }
 
-// Bruk eksisterende områdepanel i index.html.
-
-const areaPanel = document.querySelector(
-    '.sidebar .panel:nth-child(2)'
-);
-
-if (areaPanel) {
-    areaPanel.innerHTML = `
-        <h3>🗺️ Områder</h3>
-        <div id="areaOverview"></div>
-    `;
-}
-
-// Beregn fullførte oppdrag og total per område.
-
 function getAreaStats(name) {
     const missions = areaObjects.get(name) || [];
 
     const total = missions.length;
 
     const completed = missions.filter(
-        obj => state.done[obj.id] === true
+        obj => Boolean(state.done[obj.id])
     ).length;
 
-    return {
-        total,
-        completed,
-        remaining: total - completed
-    };
+    return { total, completed };
 }
-
-// Oppdater områdeoversikten.
 
 function updateAreas() {
     const container = $('areaOverview');
-
     if (!container) return;
 
     const currentArea = region(player.x, player.y);
@@ -162,53 +206,16 @@ function updateAreas() {
         totalAll += stats.total;
         completedAll += stats.completed;
 
-        const isCurrent = area.name === currentArea;
-
+        const current = area.name === currentArea;
         const finished =
             stats.total > 0 &&
             stats.completed === stats.total;
 
-        const background = isCurrent
-            ? 'rgba(77, 155, 118, 0.13)'
-            : 'transparent';
-
-        const border = isCurrent
-            ? '1px solid rgba(77, 155, 118, 0.35)'
-            : '1px solid transparent';
-
-        const countColor = finished
-            ? '#16835d'
-            : 'inherit';
-
         html += `
-            <div style="
-                display:flex;
-                justify-content:space-between;
-                align-items:center;
-                gap:8px;
-                padding:7px 8px;
-                margin:2px 0;
-                border-radius:9px;
-                background:${background};
-                border:${border};
-                font-size:13px;
-            ">
-                <span style="
-                    display:flex;
-                    align-items:center;
-                    gap:5px;
-                    min-width:0;
-                ">
-                    <span>${area.icon}</span>
-                    <span>${area.name}</span>
-                </span>
+            <div class="areaRow ${current ? 'current' : ''}">
+                <span>${area.icon} ${area.name}</span>
 
-                <span style="
-                    white-space:nowrap;
-                    font-weight:700;
-                    font-variant-numeric:tabular-nums;
-                    color:${countColor};
-                ">
+                <span class="areaCount ${finished ? 'complete' : ''}">
                     ${stats.completed}/${stats.total}
                     ${finished ? '✓' : ''}
                 </span>
@@ -217,15 +224,7 @@ function updateAreas() {
     }
 
     html += `
-        <div style="
-            display:flex;
-            justify-content:space-between;
-            border-top:1px solid rgba(100,120,120,.2);
-            margin-top:9px;
-            padding:10px 8px 2px;
-            font-size:13px;
-            font-weight:700;
-        ">
+        <div class="areaTotal">
             <span>Totalt</span>
             <span>${completedAll}/${totalAll}</span>
         </div>
@@ -235,11 +234,16 @@ function updateAreas() {
 }
 
 // --------------------------------------------------
-// OPPDATER SPILLINFORMASJON
+// SPILLINFORMASJON
 // --------------------------------------------------
 
 function updateHUD() {
-    const count = Object.keys(state.found).length;
+    const count = Object.keys(state.found)
+        .filter(id => state.found[id]).length;
+
+    const doneCount = objects.filter(
+        obj => state.done[obj.id]
+    ).length;
 
     $('coins').textContent = `🪙 ${state.coins}`;
 
@@ -268,8 +272,7 @@ function updateHUD() {
     }
 
     $('objective').textContent =
-        `${count} oppdaget · ` +
-        `${Object.keys(state.done).length} utfordringer fullført`;
+        `${count} oppdaget · ${doneCount} utfordringer fullført`;
 
     $('questProgress').style.width =
         (count / verbs.length * 100) + '%';
@@ -334,15 +337,12 @@ function interact() {
 
                 state.coins +=
                     10 + (p.type === 'portal' ? 15 : 0);
-
-                persist();
-                updateHUD();
             } else {
                 state.coins += 1;
-
-                persist();
-                updateHUD();
             }
+
+            persist();
+            updateHUD();
         }
     );
 }
@@ -395,13 +395,12 @@ $('bookBtn').onclick = () => {
 };
 
 // --------------------------------------------------
-// NULLSTILL SPILLET
+// NULLSTILLING
 // --------------------------------------------------
 
 $('resetBtn').onclick = () => {
     if (confirm(
-        'Slette all fremgang på denne enheten ' +
-        'og starte på nytt?'
+        'Slette all fremgang på denne enheten og starte på nytt?'
     )) {
         clear();
         location.reload();
@@ -409,29 +408,7 @@ $('resetBtn').onclick = () => {
 };
 
 // --------------------------------------------------
-// STYRING PÅ MOBIL / IPAD
-// --------------------------------------------------
-
-for (const b of document.querySelectorAll('[data-dir]')) {
-    const dir = b.dataset.dir;
-
-    b.addEventListener('pointerdown', e => {
-        e.preventDefault();
-        keys.add(dir);
-        b.setPointerCapture(e.pointerId);
-    });
-
-    for (const ev of [
-        'pointerup',
-        'pointercancel',
-        'lostpointercapture'
-    ]) {
-        b.addEventListener(ev, () => keys.delete(dir));
-    }
-}
-
-// --------------------------------------------------
-// TASTATURSTYRING
+// TASTATUR
 // --------------------------------------------------
 
 const directions = {
@@ -471,11 +448,13 @@ window.addEventListener('keydown', e => {
 
 window.addEventListener('keyup', e => {
     const d = directions[e.key.toLowerCase()];
-
     if (d) keys.delete(d);
 });
 
-window.addEventListener('blur', () => keys.clear());
+window.addEventListener('blur', () => {
+    keys.clear();
+    resetJoystick();
+});
 
 // --------------------------------------------------
 // HOVEDLØKKE
@@ -494,17 +473,23 @@ function loop(now) {
     if (!modalOpen) {
         let dx =
             (keys.has('right') ? 1 : 0) -
-            (keys.has('left') ? 1 : 0);
+            (keys.has('left') ? 1 : 0) +
+            joystickX;
 
         let dy =
             (keys.has('down') ? 1 : 0) -
-            (keys.has('up') ? 1 : 0);
+            (keys.has('up') ? 1 : 0) +
+            joystickY;
 
         if (dx || dy) {
-            const n = Math.hypot(dx, dy);
+            const magnitude = Math.hypot(dx, dy);
 
-            dx /= n;
-            dy /= n;
+            // Behold joystickens følsomhet.
+            // Tastaturet gir alltid full hastighet.
+            const strength = Math.min(1, magnitude);
+
+            dx = dx / magnitude * strength;
+            dy = dy / magnitude * strength;
 
             const speed = 4.2 * dt;
 
@@ -541,6 +526,7 @@ function loop(now) {
                 player.x * TILE - canvas.width / 2
             )
         ),
+
         y: Math.max(
             0,
             Math.min(
@@ -598,20 +584,21 @@ function loop(now) {
     $('actionBtn').disabled = !near || modalOpen;
 
     $('actionBtn').style.opacity =
-        near ? '1' : '.55';
+        near && !modalOpen ? '1' : '.55';
 
-    // Oppdater områdevisningen når spilleren
-    // beveger seg inn i et nytt område.
+    // Marker området spilleren befinner seg i.
 
     const currentArea = region(player.x, player.y);
 
-    if (currentArea !== loop.lastArea) {
-        loop.lastArea = currentArea;
+    if (currentArea !== lastArea) {
+        lastArea = currentArea;
 
         $('location').textContent = currentArea;
 
         updateAreas();
     }
+
+    // Lagre posisjonen med jevne mellomrom.
 
     if (now - lastSave > 3000) {
         lastSave = now;
@@ -622,7 +609,7 @@ function loop(now) {
 }
 
 // --------------------------------------------------
-// START SPILLET
+// START
 // --------------------------------------------------
 
 updateHUD();
