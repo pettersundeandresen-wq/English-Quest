@@ -4,6 +4,8 @@ import { drawPlayer } from './player.js';
 import { load, save, clear } from './save.js';
 import { showBook } from './dictionary.js';
 import { runChallenge } from './challenges.js';
+import { interiors, indoorDefinitions, indoorObjects, indoorWalkable, drawInterior } from './interiors.js';
+import { entrances } from './world.js';
 
 const state = load();
 state.found ??= {};
@@ -11,6 +13,9 @@ state.done ??= {};
 state.mastery ??= {};
 state.position ??= { x: 7, y: 7 };
 state.coins ??= 0;
+state.scene ??= 'outdoor';
+if(state.scene !== 'outdoor' && !interiors[state.scene])state.scene='outdoor';
+state.outdoorPosition ??= {x:7,y:7};
 state.cooldowns ??= {}; // Lagrer feilbesvarte oppgaver og hvilke andre verb som er forsøkt.
 
 const $ = id => document.getElementById(id);
@@ -18,6 +23,10 @@ const canvas = $('game');
 const ctx = canvas.getContext('2d');
 const modal = $('modal');
 const player = { x: state.position.x, y: state.position.y };
+let scene=state.scene;
+const allObjects=[...objects,...indoorObjects];
+const getSceneObjects=()=>scene==='outdoor'?objects:interiors[scene].objects;
+const currentRegion=()=>scene==='outdoor'?region(player.x,player.y):interiors[scene].name;
 const keys = new Set();
 let modalOpen = false;
 let near = null;
@@ -158,18 +167,19 @@ const areas = [
     { name: 'Den ville skogen', icon: '🌲' },
     { name: 'Elvedalen', icon: '🌊' },
     { name: 'Steinruinene', icon: '🪨' },
-    { name: 'Den magiske lysningen', icon: '✨' }
+    { name: 'Den magiske lysningen', icon: '✨' },
+    ...indoorDefinitions.map(d=>({name:d.name,icon:d.icon}))
 ];
 const areaObjects = new Map(areas.map(a => [a.name, []]));
-for (const obj of objects) {
-    const name = region(obj.x + 0.5, obj.y + 0.5);
+for (const obj of allObjects) {
+    const name = obj.id >= 124 ? indoorDefinitions[Math.floor((obj.id-124)/14)].name : region(obj.x + 0.5, obj.y + 0.5);
     if (!areaObjects.has(name)) areaObjects.set(name, []);
     areaObjects.get(name).push(obj);
 }
 function updateAreas() {
     const container = $('areaOverview');
     if (!container) return;
-    const currentArea = region(player.x, player.y);
+    const currentArea = currentRegion();
     let total = 0;
     let done = 0;
     let html = '';
@@ -189,12 +199,12 @@ function updateAreas() {
 
 function updateHUD() {
     const foundCount = verbs.filter(v => Boolean(state.found[v.id])).length;
-    const doneCount = objects.filter(o => Boolean(state.done[o.id])).length;
+    const doneCount = allObjects.filter(o => Boolean(state.done[o.id])).length;
     const starCount = Object.values(state.mastery).reduce((s, n) => s + Number(n || 0), 0);
     $('coins').textContent = `🪙 ${state.coins}`;
     $('found').textContent = `📖 ${foundCount}/${verbs.length}`;
     $('stars').textContent = `⭐ ${starCount}`;
-    $('location').textContent = region(player.x, player.y);
+    $('location').textContent = currentRegion();
     if (foundCount < 3) {
         $('questText').textContent = `Oppdag ${3 - foundCount} nye verb for å bli ordsamler.`;
     } else if (foundCount < 20) {
@@ -209,18 +219,29 @@ function updateHUD() {
     updateAreas();
 }
 function persist() {
-    state.position = {
-        x: Math.round(player.x * 100) / 100,
-        y: Math.round(player.y * 100) / 100
-    };
+    state.scene=scene;
+    state.position={x:Math.round(player.x*100)/100,y:Math.round(player.y*100)/100};
     save(state);
 }
 
 // --------------------------------------------------
 // UTFORDRINGER I VERDEN
 // --------------------------------------------------
+function enterScene(id){
+    state.outdoorPosition={x:player.x,y:player.y};
+    scene=id;player.x=interiors[id].spawn.x;player.y=interiors[id].spawn.y;
+    near=null;keys.clear();resetJoystick();persist();updateHUD();lastArea='';
+}
+function leaveScene(){
+    scene='outdoor';
+    player.x=state.outdoorPosition?.x ?? 7;
+    player.y=state.outdoorPosition?.y ?? 7;
+    near=null;keys.clear();resetJoystick();persist();updateHUD();lastArea='';
+}
 function interact() {
     if (modalOpen || !near) return;
+    if(near.kind==='entrance'){enterScene(near.id);return;}
+    if(near.kind==='exit'){leaveScene();return;}
     const p = near;
     if (state.done[p.id]) {
         openModal(`<h2>✅ Allerede fullført</h2>
@@ -328,38 +349,54 @@ function loop(now) {
             const x = player.x + dx * speed;
             const y = player.y + dy * speed;
             const radius = 0.22;
-            if (walkable(x - radius, player.y - radius) &&
-                walkable(x + radius, player.y + radius)) player.x = x;
-            if (walkable(player.x - radius, y - radius) &&
-                walkable(player.x + radius, y + radius)) player.y = y;
+            const pass=(xx,yy)=>scene==='outdoor'?walkable(xx,yy):indoorWalkable(interiors[scene],xx,yy);
+            if (pass(x - radius, player.y - radius) &&
+                pass(x + radius, player.y + radius)) player.x = x;
+            if (pass(player.x - radius, y - radius) &&
+                pass(player.x + radius, y + radius)) player.y = y;
             moving = true;
         }
     }
-    const cam = {
-        x: Math.max(0, Math.min(W * TILE - canvas.width, player.x * TILE - canvas.width / 2)),
-        y: Math.max(0, Math.min(H * TILE - canvas.height, player.y * TILE - canvas.height / 2))
+    const map=scene==='outdoor'?{w:W,h:H}:interiors[scene];
+    const cam={
+        x:Math.max(0,Math.min(Math.max(0,map.w*TILE-canvas.width),player.x*TILE-canvas.width/2)),
+        y:Math.max(0,Math.min(Math.max(0,map.h*TILE-canvas.height),player.y*TILE-canvas.height/2))
     };
-    drawWorld(ctx, cam, now, state.done);
+    if(scene==='outdoor')drawWorld(ctx,cam,now,state.done);
+    else drawInterior(ctx,cam,now,interiors[scene],state.done,TILE);
     drawPlayer(ctx, player.x, player.y, cam, now, moving);
     near = null;
     let best = 1.7;
-    for (const o of objects) {
+    for (const o of getSceneObjects()) {
         const distance = Math.hypot(player.x - o.x - 0.5, player.y - o.y - 0.5);
         if (distance < best) { best = distance; near = o; }
+    }
+    // A doorway is an interaction, not an English challenge.
+    if(scene==='outdoor'){
+        for(const e of entrances){
+            const distance=Math.hypot(player.x-e.x-.5,player.y-e.y-.5);
+            if(distance<best){best=distance;near={kind:'entrance',...e};}
+        }
+    }else{
+        const e=interiors[scene].exit;
+        const distance=Math.hypot(player.x-e.x-.5,player.y-e.y-.5);
+        if(distance<best){best=distance;near={kind:'exit'};}
     }
     const names = {
         chest: 'skattekiste', crystal: 'krystall', rune: 'runestein',
         bell: 'lytteklokke', portal: 'portal'
     };
-    $('nearby').textContent = near
-        ? (state.done[near.id] ? '✓ Fullført' :
-            remainingLock(near.id, near.type)
-                ? `⏳ ${remainingLock(near.id, near.type)} andre oppgaver igjen`
-                : '✨ Ny utfordring') + ': ' + (names[near.type] || 'oppgave') + ' · trykk Undersøk'
-        : 'Utforsk kartet og finn lysende gjenstander';
+    $('nearby').textContent = !near
+        ? 'Utforsk kartet og finn lysende gjenstander'
+        : near.kind==='entrance' ? `🚪 Gå inn: ${near.name} · trykk Undersøk`
+        : near.kind==='exit' ? '🚪 Gå ut til verden · trykk Undersøk'
+        : (state.done[near.id] ? '✓ Fullført' :
+            remainingLock(near.id,near.type)
+                ? `⏳ ${remainingLock(near.id,near.type)} andre oppgaver igjen`
+                : '✨ Ny utfordring')+' : '+(names[near.type]||'oppgave')+' · trykk Undersøk';
     $('actionBtn').disabled = !near || modalOpen;
     $('actionBtn').style.opacity = near && !modalOpen ? '1' : '.55';
-    const currentArea = region(player.x, player.y);
+    const currentArea = currentRegion();
     if (currentArea !== lastArea) {
         lastArea = currentArea;
         $('location').textContent = currentArea;
