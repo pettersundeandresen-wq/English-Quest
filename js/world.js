@@ -21,6 +21,39 @@ for(let i=0;i<88;i++){
  let x=xx,y=yy;let n=0;while(n++<100&&(grid[y][x]==='water'||spots.some(p=>Math.hypot(p.x-x,p.y-y)<3))){x=5+(x+3)%82;y=4+(y+5)%57}
  spots.push({id:i,x,y,type:['chest','crystal','rune','bell','portal'][i%5]});carve(x,y,1,'clearing');
 }
+// Extra 92 verb challenges (IDs 88–179). Existing IDs and positions stay unchanged.
+// Place new challenges on reachable paths/clearings, spread across all five regions.
+const newPositions = [];
+const candidateCells = [];
+for (let y = 3; y < H - 3; y++) {
+  for (let x = 3; x < W - 3; x++) {
+    if (['path', 'clearing', 'bridge'].includes(grid[y][x])) {
+      candidateCells.push({x, y});
+    }
+  }
+}
+// Stable pseudo-random order: positions do not move between game updates.
+candidateCells.sort((a, b) => rnd(a.x, a.y, 17) - rnd(b.x, b.y, 17));
+for (const c of candidateCells) {
+  if (newPositions.length >= 92) break;
+  if (spots.some(p => Math.hypot(p.x - c.x, p.y - c.y) < 2.4)) continue;
+  if (newPositions.some(p => Math.hypot(p.x - c.x, p.y - c.y) < 2.6)) continue;
+  // Require open adjacent tiles so the avatar can reach the object.
+  const open = [[1,0],[-1,0],[0,1],[0,-1]].filter(([dx,dy]) =>
+    !['water','tree','rock'].includes(grid[c.y + dy]?.[c.x + dx])
+  ).length;
+  if (open < 2) continue;
+  newPositions.push(c);
+}
+if (newPositions.length !== 92) {
+  throw new Error(`Could not place all new verb challenges: ${newPositions.length}/92`);
+}
+for (let i = 0; i < newPositions.length; i++) {
+  const {x, y} = newPositions[i];
+  spots.push({id: 88 + i, x, y, type: ['chest','crystal','rune','bell','portal'][(88 + i) % 5]});
+  grid[y][x] = 'clearing';
+}
+
 for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(grid[y][x]==='bridge'&&rnd(x,y)>.5)grid[y][x]='bridge';
 export const objects=spots;
 export const landmarks=[{x:8,y:7,name:'Landsbyen'},{x:29,y:22,name:'Skogstien'},{x:48,y:11,name:'Elvedalen'},{x:72,y:17,name:'Nordskogen'},{x:70,y:45,name:'Ruinene'},{x:26,y:52,name:'Magisk lysning'}];
