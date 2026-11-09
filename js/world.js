@@ -55,7 +55,17 @@ for (let i = 0; i < newPositions.length; i++) {
 }
 
 for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(grid[y][x]==='bridge'&&rnd(x,y)>.5)grid[y][x]='bridge';
-export const objects=spots;
+// The first 88 quests retain their original outdoor locations.
+// 36 of the new quests stay outdoors; the other 56 move indoors.
+export const objects=spots.filter(p => p.id < 124);
+export const entrances = [
+  {id:'library',name:'Det magiske biblioteket',x:11,y:9,icon:'📚'},
+  {id:'maze',name:'Labyrinten',x:26,y:20,icon:'🧩'},
+  {id:'tower',name:'Trollmannstårnet',x:49,y:12,icon:'🧙'},
+  {id:'cave',name:'Ekko-hulen',x:73,y:41,icon:'🔔'}
+];
+for(const e of entrances){carve(e.x,e.y,2,'clearing');}
+
 export const landmarks=[{x:8,y:7,name:'Landsbyen'},{x:29,y:22,name:'Skogstien'},{x:48,y:11,name:'Elvedalen'},{x:72,y:17,name:'Nordskogen'},{x:70,y:45,name:'Ruinene'},{x:26,y:52,name:'Magisk lysning'}];
 export function tile(x,y){return grid[Math.floor(y)]?.[Math.floor(x)]||'water'}
 export function walkable(x,y){return !['water','tree','rock'].includes(tile(x,y))}
@@ -69,5 +79,16 @@ if(t==='tree'){ctx.fillStyle='#426e37';ctx.fillRect(px+16,py+21,8,19);ctx.fillSt
 if(t==='rock'){ctx.fillStyle='#778d87';ctx.beginPath();ctx.ellipse(px+20,py+23,17,13,0,0,7);ctx.fill();ctx.fillStyle='#aabbb1';ctx.fillRect(px+10,py+13,13,4)}
 if(t==='bush'){ctx.fillStyle='#4f9b5b';ctx.beginPath();ctx.arc(px+20,py+23,12,0,7);ctx.fill()}
 }
-for(const p of spots){let px=(p.x+.5)*TILE-camera.x,py=(p.y+.5)*TILE-camera.y;if(px<-40||py<-40||px>w+40||py>h+40)continue;let completed=!!done[p.id];ctx.save();ctx.translate(px,py);ctx.font='29px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(completed?{chest:'📭',crystal:'◈',rune:'▣',bell:'🔕',portal:'◌'}[p.type]:{chest:'🎁',crystal:'💎',rune:'🪨',bell:'🔔',portal:'🌀'}[p.type],0,0);if(!completed){ctx.fillStyle='#fff5a3';ctx.font='bold 20px system-ui';ctx.fillText('!',12,-19)}else{ctx.fillStyle='#f2f7f4';ctx.font='bold 16px system-ui';ctx.fillText('✓',15,-16)}ctx.restore()}
+for(const e of entrances){
+  const px=(e.x+.5)*TILE-camera.x,py=(e.y+.5)*TILE-camera.y;
+  if(px<-60||py<-70||px>w+60||py>h+70)continue;
+  ctx.save();ctx.translate(px,py);
+  ctx.fillStyle='#6a4937';ctx.fillRect(-24,-20,48,45);
+  ctx.fillStyle=e.id==='cave'?'#697982':'#d6a879';ctx.fillRect(-21,-18,42,40);
+  ctx.fillStyle=e.id==='tower'?'#7862a9':'#a94c4b';ctx.beginPath();ctx.moveTo(-28,-20);ctx.lineTo(0,-43);ctx.lineTo(28,-20);ctx.fill();
+  ctx.fillStyle='#3d3034';ctx.fillRect(-9,0,18,22);
+  ctx.font='22px system-ui';ctx.textAlign='center';ctx.fillText(e.icon,0,-17);
+  ctx.restore();
+}
+for(const p of objects){let px=(p.x+.5)*TILE-camera.x,py=(p.y+.5)*TILE-camera.y;if(px<-40||py<-40||px>w+40||py>h+40)continue;let completed=!!done[p.id];ctx.save();ctx.translate(px,py);ctx.font='29px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(completed?{chest:'📭',crystal:'◈',rune:'▣',bell:'🔕',portal:'◌'}[p.type]:{chest:'🎁',crystal:'💎',rune:'🪨',bell:'🔔',portal:'🌀'}[p.type],0,0);if(!completed){ctx.fillStyle='#fff5a3';ctx.font='bold 20px system-ui';ctx.fillText('!',12,-19)}else{ctx.fillStyle='#f2f7f4';ctx.font='bold 16px system-ui';ctx.fillText('✓',15,-16)}ctx.restore()}
 }
