@@ -6,12 +6,16 @@ import { showBook } from './dictionary.js';
 import { runChallenge } from './challenges.js';
 import { interiors, indoorDefinitions, indoorObjects, indoorWalkable, drawInterior } from './interiors.js';
 import { entrances } from './world.js';
+import { homeMap } from './interiors.js';
+import { showHomeShop, drawHomeDetails } from './home.js';
 
 const state = load();
 state.found ??= {};
 state.done ??= {};
 state.mastery ??= {};
 state.position ??= { x: 7, y: 7 };
+state.homeItems ??= {};
+const ZOOM = 1.15;
 state.coins ??= 0;
 state.scene ??= 'outdoor';
 if(state.scene !== 'outdoor' && !interiors[state.scene])state.scene='outdoor';
@@ -24,6 +28,7 @@ const ctx = canvas.getContext('2d');
 const modal = $('modal');
 const player = { x: state.position.x, y: state.position.y };
 let scene=state.scene;
+if(scene==='outdoor' && (player.x<2||player.y<2||player.x>179||player.y>129||!walkable(player.x,player.y))){player.x=7;player.y=7;}
 const allObjects=[...objects,...indoorObjects];
 const getSceneObjects=()=>scene==='outdoor'?objects:interiors[scene].objects;
 const currentRegion=()=>scene==='outdoor'?region(player.x,player.y):interiors[scene].name;
@@ -168,7 +173,8 @@ const areas = [
     { name: 'Elvedalen', icon: '🌊' },
     { name: 'Steinruinene', icon: '🪨' },
     { name: 'Den magiske lysningen', icon: '✨' },
-    ...indoorDefinitions.map(d=>({name:d.name,icon:d.icon}))
+    ...indoorDefinitions.map(d=>({name:d.name,icon:d.icon})),
+    {name:'Mitt hjem',icon:'🏠'}
 ];
 const areaObjects = new Map(areas.map(a => [a.name, []]));
 for (const obj of allObjects) {
@@ -241,6 +247,7 @@ function leaveScene(){
 function interact() {
     if (modalOpen || !near) return;
     if(near.kind==='entrance'){enterScene(near.id);return;}
+    if(near.kind==='shop'){showHomeShop(openModal,state,()=>{persist();updateHUD();});return;}
     if(near.kind==='exit'){leaveScene();return;}
     const p = near;
     if (state.done[p.id]) {
@@ -358,13 +365,17 @@ function loop(now) {
         }
     }
     const map=scene==='outdoor'?{w:W,h:H}:interiors[scene];
+    const viewW=canvas.width/ZOOM,viewH=canvas.height/ZOOM;
     const cam={
-        x:Math.max(0,Math.min(Math.max(0,map.w*TILE-canvas.width),player.x*TILE-canvas.width/2)),
-        y:Math.max(0,Math.min(Math.max(0,map.h*TILE-canvas.height),player.y*TILE-canvas.height/2))
+        x:Math.max(0,Math.min(Math.max(0,map.w*TILE-viewW),player.x*TILE-viewW/2)),
+        y:Math.max(0,Math.min(Math.max(0,map.h*TILE-viewH),player.y*TILE-viewH/2))
     };
+    ctx.save();ctx.scale(ZOOM,ZOOM);
     if(scene==='outdoor')drawWorld(ctx,cam,now,state.done);
     else drawInterior(ctx,cam,now,interiors[scene],state.done,TILE);
+    if(scene==='home')drawHomeDetails(ctx,cam,state,TILE);
     drawPlayer(ctx, player.x, player.y, cam, now, moving);
+    ctx.restore();
     near = null;
     let best = 1.7;
     for (const o of getSceneObjects()) {
@@ -378,6 +389,7 @@ function loop(now) {
             if(distance<best){best=distance;near={kind:'entrance',...e};}
         }
     }else{
+        if(scene==='home'){const d=Math.hypot(player.x-18.5,player.y-13.5);if(d<best){best=d;near={kind:'shop'};}}
         const e=interiors[scene].exit;
         const distance=Math.hypot(player.x-e.x-.5,player.y-e.y-.5);
         if(distance<best){best=distance;near={kind:'exit'};}
@@ -390,6 +402,7 @@ function loop(now) {
         ? 'Utforsk kartet og finn lysende gjenstander'
         : near.kind==='entrance' ? `🚪 Gå inn: ${near.name} · trykk Undersøk`
         : near.kind==='exit' ? '🚪 Gå ut til verden · trykk Undersøk'
+        : near.kind==='shop' ? '🛒 Pynt hjemmet · trykk Undersøk'
         : (state.done[near.id] ? '✓ Fullført' :
             remainingLock(near.id,near.type)
                 ? `⏳ ${remainingLock(near.id,near.type)} andre oppgaver igjen`
