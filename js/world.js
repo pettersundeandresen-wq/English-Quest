@@ -1,94 +1,57 @@
-export const TILE=40, W=92,H=65;
-const rnd=(x,y,z=0)=>{let n=Math.sin(x*127.1+y*311.7+z*83.13)*43758.5453;return n-Math.floor(n)};
-const grid=Array.from({length:H},(_,y)=>Array.from({length:W},(_,x)=>'grass'));
-const roads=[[7,7],[19,7],[19,18],[34,18],[34,9],[52,9],[52,25],[70,25],[70,12],[84,12],[84,40],[63,40],[63,53],[42,53],[42,39],[24,39],[24,54],[9,54],[9,34],[7,7]];
-function carve(x,y,r=2,t='path'){for(let yy=Math.max(0,y-r);yy<=Math.min(H-1,y+r);yy++)for(let xx=Math.max(0,x-r);xx<=Math.min(W-1,x+r);xx++)if(Math.hypot(xx-x,yy-y)<=r+.2)grid[yy][xx]=t}
-for(let i=1;i<roads.length;i++){let [x1,y1]=roads[i-1],[x2,y2]=roads[i];let len=Math.hypot(x2-x1,y2-y1);for(let s=0;s<=len*2;s++){let t=s/(len*2);carve(Math.round(x1+(x2-x1)*t),Math.round(y1+(y2-y1)*t),2)}}
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){
- if(x>=36&&x<=40&&y<30){grid[y][x]='water';continue}
- if(x>=58&&x<=62&&y>31&&y<65){grid[y][x]='water';continue}
+export const TILE=40, W=180, H=130;
+const rand=(x,y,z=0)=>{let n=Math.sin(x*127.1+y*311.7+z*83.13)*43758.5453;return n-Math.floor(n)};
+const grid=Array.from({length:H},()=>Array(W).fill('grass'));
+const paths=[[7,7],[20,9],[29,19],[46,19],[46,9],[68,9],[68,28],[88,28],[88,12],[111,12],[111,34],[135,34],[135,17],[165,17],[165,55],[146,55],[146,86],[165,86],[165,114],[125,114],[125,95],[95,95],[95,118],[58,118],[58,95],[26,95],[26,118],[8,118],[8,68],[28,68],[28,45],[7,45],[7,7]];
+function carve(x,y,r=2,t='path'){for(let yy=Math.max(1,y-r);yy<Math.min(H-1,y+r+1);yy++)for(let xx=Math.max(1,x-r);xx<Math.min(W-1,x+r+1);xx++)if(Math.hypot(xx-x,yy-y)<=r+.2)grid[yy][xx]=t;}
+function route(a,b,r=2){let n=Math.ceil(Math.hypot(a[0]-b[0],a[1]-b[1])*2);for(let i=0;i<=n;i++){let t=i/n;carve(Math.round(a[0]+(b[0]-a[0])*t),Math.round(a[1]+(b[1]-a[1])*t),r)}}
+for(let i=1;i<paths.length;i++)route(paths[i-1],paths[i]);
+for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
  if(grid[y][x]==='path')continue;
- const q=rnd(x,y);const region=x>48&&y>31?'ruins':x>43?'forest':y>28?'forest':'village';
- if(region==='forest'&&q<.35)grid[y][x]='tree';else if(region==='ruins'&&q<.27)grid[y][x]='rock';else if(q<.10)grid[y][x]='bush';
+ if((x>=73&&x<=79&&y<67)||(x>=115&&x<=121&&y>55)){grid[y][x]='water';continue;}
+ let q=rand(x,y), forest=x>32||y>33, ruins=x>110&&y>75;
+ if(ruins&&q<.32)grid[y][x]='rock';else if(forest&&q<.41)grid[y][x]='tree';else if(q<.10)grid[y][x]='bush';
 }
-// Bridges and clear access to all landmark centers.
-for(let y=6;y<=11;y++)for(let x=35;x<=41;x++)grid[y][x]='bridge';
-for(let y=37;y<=43;y++)for(let x=57;x<=63;x++)grid[y][x]='bridge';
-const spots=[];
-for(let i=0;i<88;i++){
- const seg=i%4;const xx=seg===0?6+(i*13)%27:seg===1?42+(i*7)%43:seg===2?6+(i*11)%28:42+(i*17)%43;
- const yy=seg===0?5+(i*7)%23:seg===1?5+(i*13)%24:seg===2?33+(i*9)%27:33+(i*11)%27;
- let x=xx,y=yy;let n=0;while(n++<100&&(grid[y][x]==='water'||spots.some(p=>Math.hypot(p.x-x,p.y-y)<3))){x=5+(x+3)%82;y=4+(y+5)%57}
- spots.push({id:i,x,y,type:['chest','crystal','rune','bell','portal'][i%5]});carve(x,y,1,'clearing');
-}
-// Extra 92 verb challenges (IDs 88–179). Existing IDs and positions stay unchanged.
-// Place new challenges on reachable paths/clearings, spread across all five regions.
-const newPositions = [];
-const candidateCells = [];
-for (let y = 3; y < H - 3; y++) {
-  for (let x = 3; x < W - 3; x++) {
-    if (['path', 'clearing', 'bridge'].includes(grid[y][x])) {
-      candidateCells.push({x, y});
-    }
-  }
-}
-// Stable pseudo-random order: positions do not move between game updates.
-candidateCells.sort((a, b) => rnd(a.x, a.y, 17) - rnd(b.x, b.y, 17));
-for (const c of candidateCells) {
-  if (newPositions.length >= 92) break;
-  if (spots.some(p => Math.hypot(p.x - c.x, p.y - c.y) < 2.4)) continue;
-  if (newPositions.some(p => Math.hypot(p.x - c.x, p.y - c.y) < 2.6)) continue;
-  // Require open adjacent tiles so the avatar can reach the object.
-  const open = [[1,0],[-1,0],[0,1],[0,-1]].filter(([dx,dy]) =>
-    !['water','tree','rock'].includes(grid[c.y + dy]?.[c.x + dx])
-  ).length;
-  if (open < 2) continue;
-  newPositions.push(c);
-}
-if (newPositions.length !== 92) {
-  throw new Error(`Could not place all new verb challenges: ${newPositions.length}/92`);
-}
-for (let i = 0; i < newPositions.length; i++) {
-  const {x, y} = newPositions[i];
-  spots.push({id: 88 + i, x, y, type: ['chest','crystal','rune','bell','portal'][(88 + i) % 5]});
-  grid[y][x] = 'clearing';
-}
-
-for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(grid[y][x]==='bridge'&&rnd(x,y)>.5)grid[y][x]='bridge';
-// The first 88 quests retain their original outdoor locations.
-// 36 of the new quests stay outdoors; the other 56 move indoors.
-export const objects=spots.filter(p => p.id < 124);
-export const entrances = [
-  {id:'library',name:'Det magiske biblioteket',x:11,y:9,icon:'📚'},
-  {id:'maze',name:'Labyrinten',x:26,y:20,icon:'🧩'},
-  {id:'tower',name:'Trollmannstårnet',x:49,y:12,icon:'🧙'},
-  {id:'cave',name:'Ekko-hulen',x:73,y:41,icon:'🔔'}
+// Bridges and scenic side paths keep every region connected.
+for(const [a,b] of [[[75,26],[77,33]],[[118,92],[119,101]]])route(a,b,3);
+const branchPoints=[[20,9],[29,19],[46,19],[68,28],[88,28],[111,34],[135,34],[146,55],[146,86],[125,95],[95,95],[58,95],[26,95],[28,68]];
+for(let i=0;i<branchPoints.length;i++){const a=branchPoints[i],dx=(i%2?1:-1)*(8+i%5),dy=(i%3-1)*10;route(a,[Math.max(4,Math.min(W-5,a[0]+dx)),Math.max(4,Math.min(H-5,a[1]+dy))],1);}
+export const entrances=[
+ {id:'home',name:'Mitt hjem',x:13,y:10,icon:'🏠'},
+ {id:'library',name:'Det magiske biblioteket',x:44,y:19,icon:'📚'},
+ {id:'maze',name:'Labyrinten',x:91,y:29,icon:'🧩'},
+ {id:'tower',name:'Trollmannstårnet',x:133,y:35,icon:'🧙'},
+ {id:'cave',name:'Ekko-hulen',x:147,y:87,icon:'🔔'}
 ];
-for(const e of entrances){carve(e.x,e.y,2,'clearing');}
-
-export const landmarks=[{x:8,y:7,name:'Landsbyen'},{x:29,y:22,name:'Skogstien'},{x:48,y:11,name:'Elvedalen'},{x:72,y:17,name:'Nordskogen'},{x:70,y:45,name:'Ruinene'},{x:26,y:52,name:'Magisk lysning'}];
+for(const e of entrances){carve(e.x,e.y,4,'clearing');}
+export const objects=[];
+// Stable IDs: 0..123 outdoors; 124..179 remain indoors.
+const candidates=[];
+for(let y=4;y<H-4;y++)for(let x=4;x<W-4;x++)if(['path','clearing'].includes(grid[y][x]))candidates.push({x,y});
+candidates.sort((a,b)=>rand(a.x,a.y,77)-rand(b.x,b.y,77));
+for(const c of candidates){if(objects.length>=124)break;
+ if(entrances.some(e=>Math.hypot(c.x-e.x,c.y-e.y)<6))continue;
+ if(objects.some(o=>Math.hypot(c.x-o.x,c.y-o.y)<5.8))continue;
+ objects.push({...c,id:objects.length,type:['chest','crystal','rune','bell','portal'][objects.length%5]});carve(c.x,c.y,1,'clearing');
+}
+if(objects.length!==124)throw new Error('Not enough quest positions: '+objects.length);
+export const landmarks=[{x:7,y:7,name:'Landsbyen'},{x:50,y:19,name:'Skogstien'},{x:87,y:28,name:'Elvedalen'},{x:130,y:40,name:'Nordskogen'},{x:155,y:95,name:'Ruinene'},{x:28,y:110,name:'Magisk lysning'}];
 export function tile(x,y){return grid[Math.floor(y)]?.[Math.floor(x)]||'water'}
 export function walkable(x,y){return !['water','tree','rock'].includes(tile(x,y))}
-export function region(x,y){if(x>57&&y>34)return 'Steinruinene';if(x>42&&y>30)return 'Den magiske lysningen';if(x>42)return 'Elvedalen';if(y>30)return 'Den ville skogen';return 'Landsbyen'}
-export function drawWorld(ctx,camera,time,done){const w=ctx.canvas.width,h=ctx.canvas.height;ctx.fillStyle='#8bc985';ctx.fillRect(0,0,w,h);const x0=Math.max(0,Math.floor(camera.x/TILE)-1),x1=Math.min(W,Math.ceil((camera.x+w)/TILE)+1),y0=Math.max(0,Math.floor(camera.y/TILE)-1),y1=Math.min(H,Math.ceil((camera.y+h)/TILE)+1);
-for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){let px=x*TILE-camera.x,py=y*TILE-camera.y,t=grid[y][x];ctx.fillStyle=t==='path'?'#e5ca91':t==='clearing'?'#b4d89b':t==='bridge'?'#b88250':t==='water'?'#54b8d8':(rnd(x,y)>.5?'#90c783':'#86c27c');ctx.fillRect(px,py,TILE+1,TILE+1);
-if(t==='grass'||t==='clearing'){if(rnd(x,y,4)>.7){ctx.fillStyle=rnd(x,y,5)>.5?'#f7e7a7':'#c4e6a5';ctx.fillRect(px+8+rnd(x,y)*19,py+9,3,5)}}
-if(t==='water'){ctx.fillStyle='#8bdef0';ctx.fillRect(px+5+Math.sin(time/450+x)*4,py+10,18,3);ctx.fillRect(px+20,py+30,12,2)}
-if(t==='bridge'){ctx.fillStyle='#875c36';ctx.fillRect(px,py+4,TILE,3);ctx.fillRect(px,py+33,TILE,3)}
-if(t==='tree'){ctx.fillStyle='#426e37';ctx.fillRect(px+16,py+21,8,19);ctx.fillStyle='#286e48';ctx.beginPath();ctx.arc(px+19,py+17,18,0,7);ctx.fill();ctx.fillStyle='#449a61';ctx.beginPath();ctx.arc(px+13,py+12,12,0,7);ctx.fill()}
-if(t==='rock'){ctx.fillStyle='#778d87';ctx.beginPath();ctx.ellipse(px+20,py+23,17,13,0,0,7);ctx.fill();ctx.fillStyle='#aabbb1';ctx.fillRect(px+10,py+13,13,4)}
-if(t==='bush'){ctx.fillStyle='#4f9b5b';ctx.beginPath();ctx.arc(px+20,py+23,12,0,7);ctx.fill()}
-}
-for(const e of entrances){
-  const px=(e.x+.5)*TILE-camera.x,py=(e.y+.5)*TILE-camera.y;
-  if(px<-60||py<-70||px>w+60||py>h+70)continue;
-  ctx.save();ctx.translate(px,py);
-  ctx.fillStyle='#6a4937';ctx.fillRect(-24,-20,48,45);
-  ctx.fillStyle=e.id==='cave'?'#697982':'#d6a879';ctx.fillRect(-21,-18,42,40);
-  ctx.fillStyle=e.id==='tower'?'#7862a9':'#a94c4b';ctx.beginPath();ctx.moveTo(-28,-20);ctx.lineTo(0,-43);ctx.lineTo(28,-20);ctx.fill();
-  ctx.fillStyle='#3d3034';ctx.fillRect(-9,0,18,22);
-  ctx.font='22px system-ui';ctx.textAlign='center';ctx.fillText(e.icon,0,-17);
-  ctx.restore();
-}
-for(const p of objects){let px=(p.x+.5)*TILE-camera.x,py=(p.y+.5)*TILE-camera.y;if(px<-40||py<-40||px>w+40||py>h+40)continue;let completed=!!done[p.id];ctx.save();ctx.translate(px,py);ctx.font='29px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(completed?{chest:'📭',crystal:'◈',rune:'▣',bell:'🔕',portal:'◌'}[p.type]:{chest:'🎁',crystal:'💎',rune:'🪨',bell:'🔔',portal:'🌀'}[p.type],0,0);if(!completed){ctx.fillStyle='#fff5a3';ctx.font='bold 20px system-ui';ctx.fillText('!',12,-19)}else{ctx.fillStyle='#f2f7f4';ctx.font='bold 16px system-ui';ctx.fillText('✓',15,-16)}ctx.restore()}
+export function region(x,y){if(x>115&&y>72)return 'Steinruinene';if(y>75)return 'Den magiske lysningen';if(x>77)return 'Elvedalen';if(y>32||x>33)return 'Den ville skogen';return 'Landsbyen'}
+export function drawWorld(ctx,camera,time,done){
+ const w=ctx.canvas.width,h=ctx.canvas.height;
+ ctx.fillStyle='#8bc985';ctx.fillRect(0,0,w,h);
+ const x0=Math.max(0,Math.floor(camera.x/TILE)-2),x1=Math.min(W,Math.ceil((camera.x+w)/TILE)+2),y0=Math.max(0,Math.floor(camera.y/TILE)-2),y1=Math.min(H,Math.ceil((camera.y+h)/TILE)+2);
+ for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
+ const px=x*TILE-camera.x,py=y*TILE-camera.y,t=grid[y][x],q=rand(x,y);
+ ctx.fillStyle=t==='path'?'#d9ba84':t==='clearing'?'#b0d89a':t==='water'?'#4eaccd':q>.5?'#8bc782':'#85c17b';ctx.fillRect(px,py,TILE+1,TILE+1);
+ if(t==='path'){ctx.fillStyle='#bb9c70';for(let i=0;i<3;i++){const xx=px+rand(x,y,i+2)*34,yy=py+rand(x,y,i+5)*34;ctx.fillRect(xx,yy,3,2)}}
+ if(t==='grass'||t==='clearing'||t==='bush'){ctx.fillStyle='#539f61';for(let i=0;i<3;i++){const xx=px+rand(x,y,i+7)*35,yy=py+rand(x,y,i+10)*35;ctx.fillRect(xx,yy,2,5)}if(q>.84){ctx.fillStyle=q>.93?'#f4d0ed':'#fff0a6';ctx.beginPath();ctx.arc(px+20,py+18,3,0,7);ctx.fill()}}
+ if(t==='water'){ctx.fillStyle='#79d5e6';ctx.fillRect(px+4+Math.sin(time/450+x+y)*3,py+10,22,3);ctx.fillRect(px+18,py+29,13,2)}
+ if(t==='tree'){ctx.fillStyle='#4a6037';ctx.fillRect(px+16,py+19,8,20);ctx.fillStyle='#225d40';ctx.beginPath();ctx.arc(px+22,py+20,18,0,7);ctx.fill();ctx.fillStyle='#3b9360';ctx.beginPath();ctx.arc(px+15,py+13,15,0,7);ctx.fill();ctx.fillStyle='#72b87b';ctx.beginPath();ctx.arc(px+11,py+8,7,0,7);ctx.fill()}
+ if(t==='rock'){ctx.fillStyle='#607a76';ctx.beginPath();ctx.ellipse(px+21,py+25,18,12,-.3,0,7);ctx.fill();ctx.fillStyle='#9db2a8';ctx.beginPath();ctx.ellipse(px+15,py+18,9,4,-.3,0,7);ctx.fill()}
+ if(t==='bush'){ctx.fillStyle='#3d8b53';ctx.beginPath();ctx.arc(px+17,py+24,12,0,7);ctx.arc(px+27,py+22,10,0,7);ctx.fill()}
+ }
+ for(const e of entrances){const px=(e.x+.5)*TILE-camera.x,py=(e.y+.5)*TILE-camera.y;if(px<-70||py<-80||px>w+70||py>h+80)continue;ctx.save();ctx.translate(px,py);ctx.fillStyle='#4c3938';ctx.fillRect(-27,-20,54,45);ctx.fillStyle=e.id==='home'?'#f2d8b2':'#d9b989';ctx.fillRect(-24,-19,48,40);ctx.fillStyle=e.id==='home'?'#a86aaf':'#ad5554';ctx.beginPath();ctx.moveTo(-32,-20);ctx.lineTo(0,-48);ctx.lineTo(32,-20);ctx.fill();ctx.fillStyle='#5b4037';ctx.fillRect(-9,0,18,21);ctx.fillStyle='#cde8fa';ctx.fillRect(-19,-11,10,9);ctx.fillRect(10,-11,10,9);ctx.font='23px system-ui';ctx.textAlign='center';ctx.fillText(e.icon,0,-20);ctx.restore()}
+ for(const p of objects){const px=(p.x+.5)*TILE-camera.x,py=(p.y+.5)*TILE-camera.y;if(px<-40||py<-40||px>w+40||py>h+40)continue;const completed=!!done[p.id];ctx.font='28px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(completed?{chest:'📭',crystal:'◈',rune:'▣',bell:'🔕',portal:'◌'}[p.type]:{chest:'🎁',crystal:'💎',rune:'🪨',bell:'🔔',portal:'🌀'}[p.type],px,py);ctx.fillStyle=completed?'#e9f9eb':'#fff2a2';ctx.font='bold 17px system-ui';ctx.fillText(completed?'✓':'!',px+14,py-16)}
 }
