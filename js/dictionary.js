@@ -88,4 +88,3 @@ export function showBook(openModal, state, practice, lockStatus = () => 0) {
     render();
     return { refresh: render, getFilter: () => filter, getSelectedId: () => selectedId };
 }
-
