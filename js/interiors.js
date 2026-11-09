@@ -72,3 +72,8 @@ export function drawInterior(ctx,camera,time,map,done,tileSize=40){
   }
   ctx.font='bold 17px system-ui';ctx.textAlign='left';ctx.fillStyle='#ffffff';ctx.fillText(map.icon+' '+map.name,14,25);
 }
+
+// Player home: a safe explorable room, no English questions.
+const homeTiles=Array.from({length:19},(_,y)=>Array.from({length:25},(_,x)=>x===0||y===0||x===24||y===18?'wall':'floor'));
+export const homeMap={id:'home',name:'Mitt hjem',icon:'🏠',floor:'#c7a476',wall:'#745a66',accent:'#ffe0a4',seed:19,w:25,h:19,tiles:homeTiles,objects:[],exit:{x:12,y:16},spawn:{x:12.5,y:15.5}};
+interiors.home=homeMap;
