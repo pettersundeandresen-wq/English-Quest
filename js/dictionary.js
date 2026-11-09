@@ -1,249 +1,91 @@
-
 import { verbs } from '../data/verbs.js';
 import { speak } from './audio.js';
 
-export function showBook(openModal, state, practice) {
+export function showBook(openModal, state, practice, lockStatus = () => 0) {
     let filter = 'all';
     let selectedId = null;
-
-    const filters = [
-        ['all', 'Alle'],
-        ['found', 'Oppdaget'],
-        ['practice', 'Må øves'],
-        ['mastered', 'Mestret']
-    ];
-
     const $ = id => document.getElementById(id);
-
-    function isFound(v) {
-        return Boolean(state.found[v.id]);
-    }
-
-    function stars(v) {
-        return Math.max(
-            0,
-            Math.min(5, state.mastery[v.id] || 0)
-        );
-    }
-
-    function matchesFilter(v) {
-        if (filter === 'all') return true;
-
-        if (filter === 'found') {
-            return isFound(v);
-        }
-
-        if (filter === 'practice') {
-            return isFound(v) && stars(v) < 5;
-        }
-
-        if (filter === 'mastered') {
-            return isFound(v) && stars(v) === 5;
-        }
-
-        return false;
-    }
+    const stars = v => Math.max(0, Math.min(5, Number(state.mastery[v.id] || 0)));
+    const found = v => Boolean(state.found[v.id]);
+    const matches = v => filter === 'all' ||
+        (filter === 'found' && found(v)) ||
+        (filter === 'practice' && found(v) && stars(v) < 5) ||
+        (filter === 'mastered' && found(v) && stars(v) === 5);
 
     function render() {
-        const found = verbs.filter(isFound);
-
-        const mastered = found.filter(
-            v => stars(v) === 5
-        );
-
-        const list = verbs.filter(matchesFilter);
-
-        const starCount = found.reduce(
-            (sum, v) => sum + stars(v),
-            0
-        );
-
-        // Dersom et verb ikke lenger passer filteret,
-        // behold filteret, men lukk verbdetaljene.
-        if (
-            selectedId !== null &&
-            !list.some(v => v.id === selectedId)
-        ) {
+        const discovered = verbs.filter(found);
+        const mastered = discovered.filter(v => stars(v) === 5);
+        const visible = verbs.filter(matches);
+        if (selectedId !== null && !visible.some(v => v.id === selectedId)) {
             selectedId = null;
         }
-
-        const tabs = filters.map(([id, label]) => `
-            <button
-                data-filter="${id}"
-                class="${filter === id ? 'active' : ''}"
-            >
-                ${label}
-            </button>
-        `).join('');
-
-        const cards = list.map(v => {
-            const foundWord = isFound(v);
-            const selected = selectedId === v.id;
-
-            return `
-                <button
-                    class="wordCard
-                        ${foundWord ? '' : 'locked'}
-                        ${selected ? 'selected' : ''}"
-                    data-word="${v.id}"
-                    style="${selected
-                        ? 'outline:2px solid #315bd9;'
-                        : ''}"
-                >
-                    <b>
-                        ${foundWord ? v.word : '🔒 ???'}
-                    </b>
-
-                    <small>
-                        ${foundWord
-                            ? '★'.repeat(stars(v)) +
-                              '☆'.repeat(5 - stars(v))
-                            : 'Uoppdaget'}
-                    </small>
-                </button>
-            `;
-        }).join('');
-
+        const tabs = [
+            ['all', 'Alle'], ['found', 'Oppdaget'],
+            ['practice', 'Må øves'], ['mastered', 'Mestret']
+        ];
         openModal(`
             <h2>📖 Den magiske ordboken</h2>
-
-            <div class="bookStats">
-                Oppdaget <b>${found.length}/${verbs.length}</b>
+            <div class="bookStats">Oppdaget <b>${discovered.length}/${verbs.length}</b>
                 · Mestret <b>${mastered.length}/${verbs.length}</b>
-                · Stjerner <b>${starCount}/${verbs.length * 5}</b>
+                · Stjerner <b>${discovered.reduce((s, v) => s + stars(v), 0)}/${verbs.length * 5}</b>
             </div>
-
-            <div class="bookTabs">
-                ${tabs}
-            </div>
-
-            <div class="bookGrid">
-                ${cards || `
-                    <p class="muted">
-                        Ingen verb i denne kategorien ennå.
-                    </p>
-                `}
-            </div>
-
+            <div class="bookTabs">${tabs.map(([id, label]) =>
+                `<button data-filter="${id}" class="${filter === id ? 'active' : ''}">${label}</button>`
+            ).join('')}</div>
+            <div class="bookGrid">${visible.map(v => `
+                <button class="wordCard ${found(v) ? '' : 'locked'}" data-word="${v.id}"
+                    style="${selectedId === v.id ? 'outline:2px solid #315bd9' : ''}">
+                    <b>${found(v) ? v.word : '🔒 ???'}</b>
+                    <small>${found(v) ? '★'.repeat(stars(v)) + '☆'.repeat(5 - stars(v)) : 'Uoppdaget'}</small>
+                </button>`).join('') || '<p class="muted">Ingen verb i denne kategorien ennå.</p>'}</div>
             <div id="detail"></div>
         `);
-
-        // Filterknapper.
-        document.querySelectorAll('[data-filter]')
-            .forEach(button => {
-                button.onclick = () => {
-                    filter = button.dataset.filter;
-                    selectedId = null;
-                    render();
-                };
-            });
-
-        // Verbkort.
-        document.querySelectorAll('[data-word]')
-            .forEach(button => {
-                button.onclick = () => {
-                    const id = Number(button.dataset.word);
-
-                    const v = verbs.find(
-                        word => word.id === id
-                    );
-
-                    if (!v || !isFound(v)) return;
-
-                    selectedId = v.id;
-                    renderDetail();
-                };
-            });
-
-        if (selectedId !== null) {
-            renderDetail();
-        }
+        document.querySelectorAll('[data-filter]').forEach(b => {
+            b.onclick = () => { filter = b.dataset.filter; selectedId = null; render(); };
+        });
+        document.querySelectorAll('[data-word]').forEach(b => {
+            b.onclick = () => {
+                const v = verbs.find(w => String(w.id) === b.dataset.word);
+                if (!v || !found(v)) return;
+                selectedId = v.id;
+                render();
+            };
+        });
+        if (selectedId !== null) renderDetail();
     }
 
     function renderDetail() {
-        const v = verbs.find(
-            word => word.id === selectedId
-        );
-
-        const container = $('detail');
-
-        if (!container || !v || !isFound(v)) return;
-
+        const v = verbs.find(w => w.id === selectedId);
+        if (!v || !found(v) || !$('detail')) return;
         const level = stars(v);
-
-        container.innerHTML = `
+        const types = ['chest', 'crystal', 'rune', 'bell', 'portal'];
+        const nextType = types[Math.min(4, level)];
+        const remaining = lockStatus(v.id, nextType);
+        $('detail').innerHTML = `
             <div class="wordDetail">
-                <h3>to ${v.word} · ${v.no}</h3>
-
-                <p>
-                    He / she / it:
-                    <b>${v.third}</b>
-                    · ${'⭐'.repeat(level)}
-                    ${'☆'.repeat(5 - level)}
-                </p>
-
-                <p>
-                    <b>${v.sentence || ''}</b>
-                </p>
-
+                <h3>${['can','could','will','would','must','should','might'].includes(v.word) ? '' : 'to '}${v.word} · ${v.no}</h3>
+                <p>He / she / it: <b>${v.third}</b> · ${'⭐'.repeat(level)}${'☆'.repeat(5 - level)}</p>
+                <p><b>${v.sentence || ''}</b></p>
+                ${remaining ? `<p class="muted">⏳ Denne øvelsen er sperret. Gjennomfør ${remaining} andre verboppgaver først.</p>` : ''}
                 <div class="row">
-                    <button
-                        class="secondary"
-                        id="wordAudio"
-                    >
-                        🔊 Ord
-                    </button>
-
-                    <button
-                        class="secondary"
-                        id="sentenceAudio"
-                    >
-                        🔊 Setning
-                    </button>
-
-                    <button
-                        class="secondary"
-                        id="slowAudio"
-                    >
-                        🐢 Sakte
-                    </button>
-
-                    <button
-                        class="primary"
-                        id="wordPractice"
-                    >
-                        Øv på ordet
+                    <button class="secondary" id="wordAudio">🔊 Ord</button>
+                    <button class="secondary" id="sentenceAudio">🔊 Setning</button>
+                    <button class="secondary" id="slowAudio">🐢 Sakte</button>
+                    <button class="primary" id="wordPractice" ${level >= 5 ? 'disabled' : ''}>
+                        ${level >= 5 ? '🏆 Mestret' : remaining ? `⏳ ${remaining} oppgaver igjen` : 'Øv på ordet'}
                     </button>
                 </div>
-            </div>
-        `;
-
+            </div>`;
         $('wordAudio').onclick = () => speak(v.word);
-
-        $('sentenceAudio').onclick = () => {
-            speak(v.sentence || v.word);
-        };
-
-        $('slowAudio').onclick = () => {
-            speak(v.sentence || v.word, true);
-        };
-
+        $('sentenceAudio').onclick = () => speak(v.sentence || v.word);
+        $('slowAudio').onclick = () => speak(v.sentence || v.word, true);
         $('wordPractice').onclick = () => {
+            if (level >= 5) return;
             practice(v);
         };
     }
 
-    function refresh() {
-        // Samme filter og valgt verb beholdes.
-        // Mestring og stjerner leses på nytt fra state.
-        render();
-    }
-
     render();
-
-    return {
-        refresh,
-        getFilter: () => filter,
-        getSelectedId: () => selectedId
-    };
+    return { refresh: render, getFilter: () => filter, getSelectedId: () => selectedId };
 }
+
